@@ -155,7 +155,6 @@ def handle_url_download(message):
         logger.error(f"An unexpected error occurred in handle_url_download: {e}")
         bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
 
-
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     bot.send_message(message.chat.id, "Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
@@ -164,7 +163,6 @@ def handle_start(message):
 def handle_text_messages(message):
   """Handles incoming text message and creates a thread."""
   handle_url_download(message)
-
 
 @bot.message_handler(content_types=['document', 'video'])
 def handle_file_messages(message):
