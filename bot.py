@@ -19,19 +19,17 @@ def create_temp_dir():
         os.makedirs(TEMP_DIR)
     return TEMP_DIR
 
-
-async def download_file(url, file_path):
-    """Downloads a file."""
+async def download_file_stream(url, file_path):
+    """Downloads a file using stream processing, not memory."""
     try:
         response = requests.get(url, stream=True)
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-
+        response.raise_for_status()
         with open(file_path, 'wb') as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
         return True
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error downloading the file: {e}")
+        logger.error(f"Error downloading the file with stream: {e}")
         return False
 
 async def add_video_watermark(video_path, output_path, watermark_image, watermark_text):
@@ -65,7 +63,6 @@ async def add_video_watermark(video_path, output_path, watermark_image, watermar
         else:
             return False
 
-
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
@@ -77,8 +74,9 @@ async def add_video_watermark(video_path, output_path, watermark_image, watermar
             return False
         return True
     except FileNotFoundError:
-      logger.error("ffmpeg not found. Please ensure it is in your system's PATH")
-      return False
+        logger.error("ffmpeg not found. Please ensure it is in your system's PATH")
+        return False
+
 
 async def send_telegram_file_chunks(bot, file_path, chat_id):
     """Sends a file to Telegram in chunks."""
@@ -130,8 +128,6 @@ async def send_telegram_file_chunks(bot, file_path, chat_id):
         logger.error(f"Unexpected error sending telegram file: {e}")
         return False
 
-
-
 async def process_file(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path, file_type):
     """Processes the file, including download, watermark, and sending."""
     try:
@@ -177,10 +173,10 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
           file_info = await context.bot.get_file(file_id)
           file_path = os.path.join(create_temp_dir(), update.message.document.file_name)
 
-          downloaded_file = await context.bot.download_file(file_info.file_path)
-
-          with open(file_path, "wb") as new_file:
-            new_file.write(downloaded_file)
+          file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+          if not await download_file_stream(file_url, file_path):
+              await context.bot.send_message(chat_id=chat_id, text="Download failed.")
+              return
 
           file_type = 'document'
           await process_file(update, context, file_path, file_type)
@@ -191,12 +187,14 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
           file_info = await context.bot.get_file(file_id)
           file_path = os.path.join(create_temp_dir(), update.message.video.file_name)
 
-          downloaded_file = await context.bot.download_file(file_info.file_path)
+          file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+          if not await download_file_stream(file_url, file_path):
+            await context.bot.send_message(chat_id=chat_id, text="Download failed.")
+            return
 
-          with open(file_path, "wb") as new_file:
-            new_file.write(downloaded_file)
           file_type = 'video'
           await process_file(update, context, file_path, file_type)
+
     except TelegramError as e:
         logger.error(f"Telegram API error in handle_file_download: {e}")
         await context.bot.send_message(chat_id=chat_id, text=f"Error processing file. Please try again.")
