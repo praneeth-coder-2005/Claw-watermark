@@ -144,12 +144,25 @@ async def start(client, message):
   await client.send_message(chat_id=message.chat.id, text="Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
 
 async def main():
-  app = Client(
-      "file_transfer_bot",
-      api_id=int(os.environ.get("TELEGRAM_API_ID")), # you must have this enviroment variable set
-      api_hash=os.environ.get("TELEGRAM_API_HASH"), # you must have this enviroment variable set
-      bot_token=TELEGRAM_BOT_TOKEN
-  )
+  api_id = os.environ.get("TELEGRAM_API_ID")
+  api_hash = os.environ.get("TELEGRAM_API_HASH")
+
+
+  if not api_id or not api_hash:
+      logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables must be set")
+      return
+
+  try:
+    app = Client(
+        "file_transfer_bot",
+        api_id=int(api_id),  # Check if TELEGRAM_API_ID exists
+        api_hash=api_hash, # Check if TELEGRAM_API_HASH exists
+        bot_token=TELEGRAM_BOT_TOKEN
+    )
+  except ValueError as e:
+       logger.error(f"Error: TELEGRAM_API_ID must be an integer. {e}")
+       return
+
 
   @app.on_message(filters.command("start"))
   async def start_command(client, message):
@@ -159,15 +172,12 @@ async def main():
   async def handle_text_messages(client, message):
     await handle_url_download(client, message)
 
-
   @app.on_message(filters.document | filters.video)
   async def handle_file_messages(client, message):
         await handle_file_download(client, message)
 
-
   print("Bot is running...")
   await app.run()
-
 
 if __name__ == "__main__":
    asyncio.run(main())
