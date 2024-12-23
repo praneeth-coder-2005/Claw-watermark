@@ -5,7 +5,8 @@ import traceback
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaDocument, InputMediaVideo
 from pyrogram.errors import RPCError
-from config import TELEGRAM_BOT_TOKEN, TEMP_DIR
+import requests
+from config import TELEGRAM_BOT_TOKEN, TEMP_DIR, TELEGRAM_API_ID, TELEGRAM_API_HASH
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -62,6 +63,7 @@ async def send_telegram_file_chunks(client, file_path, chat_id):
     except Exception as e:
         logger.error(f"Error sending telegram file: {e}")
         return False
+
 
 async def handle_file_download(client, message):
     """Handles incoming document and video messages from telegram."""
@@ -143,18 +145,12 @@ async def start(client, message):
   await client.send_message(chat_id=message.chat.id, text="Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
 
 async def main():
-  api_id = os.environ.get("TELEGRAM_API_ID")
-  api_hash = os.environ.get("TELEGRAM_API_HASH")
-
-  if not api_id or not api_hash:
-      logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables must be set")
-      return
 
   try:
     app = Client(
         "file_transfer_bot",
-        api_id=int(api_id),  # Check if TELEGRAM_API_ID exists
-        api_hash=api_hash, # Check if TELEGRAM_API_HASH exists
+        api_id=TELEGRAM_API_ID,
+        api_hash=TELEGRAM_API_HASH,
         bot_token=TELEGRAM_BOT_TOKEN
     )
   except ValueError as e:
