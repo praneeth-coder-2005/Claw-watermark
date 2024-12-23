@@ -128,7 +128,6 @@ async def send_telegram_file_chunks(bot, file_path, chat_id):
         logger.error(f"Unexpected error sending telegram file: {e}")
         return False
 
-
 async def process_file(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path, file_type):
     """Processes the file, including download, watermark, and sending."""
     try:
@@ -164,7 +163,6 @@ async def process_file(update: Update, context: ContextTypes.DEFAULT_TYPE, file_
         logger.error(f"Error in processing file: {e}")
         await context.bot.send_message(chat_id=chat_id, text=f"An unexpected error has occurred: {e}")
 
-
 async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming document and video messages."""
     try:
@@ -175,7 +173,14 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
             file_name = update.message.document.file_name
             file_path = os.path.join(create_temp_dir(), file_name)
 
-            file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+            try:
+              file_info = await context.bot.get_file(file_id)
+              file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+            except TelegramError as e:
+              logger.error(f"Error getting file info: {e}")
+              await context.bot.send_message(chat_id=chat_id, text=f"Error getting file information.")
+              return
+
 
             if not await download_file_stream(file_url, file_path):
                 await context.bot.send_message(chat_id=chat_id, text="Download failed.")
@@ -190,13 +195,21 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
             file_name = update.message.video.file_name
             file_path = os.path.join(create_temp_dir(), file_name)
 
-            file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+            try:
+               file_info = await context.bot.get_file(file_id)
+               file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+            except TelegramError as e:
+              logger.error(f"Error getting file info: {e}")
+              await context.bot.send_message(chat_id=chat_id, text=f"Error getting file information.")
+              return
 
             if not await download_file_stream(file_url, file_path):
                 await context.bot.send_message(chat_id=chat_id, text="Download failed.")
                 return
+
             file_type = 'video'
             await process_file(update, context, file_path, file_type)
+
 
     except TelegramError as e:
         logger.error(f"Telegram API error in handle_file_download: {e}")
