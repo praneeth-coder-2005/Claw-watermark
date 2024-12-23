@@ -1,10 +1,10 @@
 import os
-import telebot
-import threading
-import requests
+import asyncio
 import logging
 import traceback
-import asyncio
+from pyrogram import Client, filters
+from pyrogram.types import InputMediaDocument, InputMediaVideo
+from pyrogram.errors import RPCError
 from config import TELEGRAM_BOT_TOKEN, TEMP_DIR
 
 logging.basicConfig(
@@ -12,7 +12,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 def create_temp_dir():
     """Creates the temporary directory for saving files, if not exist"""
@@ -20,43 +19,13 @@ def create_temp_dir():
         os.makedirs(TEMP_DIR)
     return TEMP_DIR
 
-def download_file_stream(url, file_path):
-    """Downloads a file using stream processing."""
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        with open(file_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-        return True
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error downloading the file with stream: {e}")
-        return False
-
-async def download_file_stream_async(url, file_path):
-    """Downloads a file asynchronously."""
-    try:
-        process = await asyncio.create_subprocess_exec(
-            'curl', '-s', url, '--output', file_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            print(f"Error downloading file: {stderr.decode()}")
-            return False
-        return True
-    except Exception as e:
-        print(f"Error downloading file: {e}")
-        return False
-
-def send_telegram_file_chunks(bot, file_path, chat_id):
+async def send_telegram_file_chunks(client, file_path, chat_id):
     """Sends a file to Telegram in chunks."""
     try:
         file_size = os.path.getsize(file_path)
         if file_size > 50 * 1024 * 1024:  # 50 MB max size for document
             logger.info(f"File size {file_size} exceeds 50MB, sending as chunks")
-            bot.send_message(chat_id=chat_id, text="Sending large file in chunks...")
+            await client.send_message(chat_id=chat_id, text="Sending large file in chunks...")
             chunk_size = 20 * 1024 * 1024  # 20 MB chunk size
             with open(file_path, 'rb') as file:
                 media_list = []
@@ -67,166 +36,138 @@ def send_telegram_file_chunks(bot, file_path, chat_id):
                         break
                     if len(media_list) > 9:
                         if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                            bot.send_media_group(chat_id=chat_id, media=media_list)
+                            await client.send_media_group(chat_id=chat_id, media=media_list)
                         else:
-                            bot.send_media_group(chat_id=chat_id, media=media_list)
+                            await client.send_media_group(chat_id=chat_id, media=media_list)
                         media_list = []
                     #check if video or document
                     if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                        media_list.append(telebot.types.InputMediaVideo(chunk))
+                       media_list.append(InputMediaVideo(chunk))
                     else:
-                        media_list.append(telebot.types.InputMediaDocument(chunk))
+                       media_list.append(InputMediaDocument(chunk))
                     i = i + 1
-
                 if media_list:
-                   if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                      bot.send_media_group(chat_id=chat_id, media=media_list)
-                   else:
-                      bot.send_media_group(chat_id=chat_id, media=media_list)
+                  if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                     await client.send_media_group(chat_id=chat_id, media=media_list)
+                  else:
+                      await client.send_media_group(chat_id=chat_id, media=media_list)
         else:
-            logger.info(f"File size {file_size} does not exceed 50MB, sending as single file")
-            with open(file_path, 'rb') as file:
-              if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                bot.send_video(chat_id=chat_id, video=file)
-              else:
-                  bot.send_document(chat_id=chat_id, document=file)
+             logger.info(f"File size {file_size} does not exceed 50MB, sending as single file")
+             with open(file_path, 'rb') as file:
+               if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                  await client.send_video(chat_id=chat_id, video=file)
+               else:
+                   await client.send_document(chat_id=chat_id, document=file)
         return True
     except Exception as e:
         logger.error(f"Error sending telegram file: {e}")
         return False
 
-def process_file(message, file_path):
-    """Processes the file, including download, and sending."""
-    try:
-        chat_id = message.chat.id
 
-        bot.send_message(chat_id, "Downloading file...")
-
-        if send_telegram_file_chunks(bot, file_path, chat_id):
-            bot.send_message(chat_id, "File sent successfully!")
-        else:
-            bot.send_message(chat_id, "File sending failed.")
-
-        # Clean up temporary files
-        os.remove(file_path)
-
-    except Exception as e:
-        logger.error(f"Error in processing file: {e}")
-        bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
-
-def handle_file_download_from_telegram(message):
+async def handle_file_download(client, message):
     """Handles incoming document and video messages from telegram."""
     try:
         chat_id = message.chat.id
-        file_path = None  # Initialize file_path
+        file_path = None # initialize file path
+
         if message.document:
            logger.info(f"Received a document message: {message.document.file_name} and {message.document.file_id}")
            file_id = message.document.file_id
            file_name = message.document.file_name
            file_path = os.path.join(create_temp_dir(), file_name)
-           download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
         elif message.video:
           logger.info(f"Received a video message: {message.video.file_name} and {message.video.file_id}")
           file_id = message.video.file_id
           file_name = message.video.file_name
           file_path = os.path.join(create_temp_dir(), file_name)
-          download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
         if file_path:
-            download_strategies = [
-                (download_file_stream, (download_url, file_path)),
-                  (asyncio.run, (download_file_stream_async(download_url, file_path),)),
-                ]
-            for download_function, args in download_strategies:
-                try:
-                    if isinstance(download_function, type(asyncio.run)): # we call it differently if it's a asyncio method
-                      if download_function(*args):
-                         threading.Thread(target=process_file, args=(message, file_path)).start()
-                         return # if it works we return
+          await client.send_message(chat_id=chat_id, text="Downloading file...")
+          try:
+            await client.download_media(message, file_path) # download directly with pyrogram, so we don't need to use URLs
+            await send_telegram_file_chunks(client, file_path, chat_id)
 
-                    elif download_function(*args):
-                        threading.Thread(target=process_file, args=(message, file_path)).start()
-                        return  # if it works we return
+          except RPCError as e:
+             logger.error(f"Error downloading and sending the file: {e}")
+             logger.error(traceback.format_exc())  # Log traceback
+             await client.send_message(chat_id=chat_id, text="Download and send failed.")
 
-                    else:
-                       logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
-
-                except Exception as e:
-                    logger.error(f"Error using download strategy {download_function.__name__}: {e}")
-                    logger.error(traceback.format_exc()) # Log traceback
-                    bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
-
-            bot.send_message(chat_id=chat_id, text="All download attempts failed.")
-        else:
-          bot.send_message(chat_id=chat_id, text="Error getting file URL.")
+          finally:
+            if file_path and os.path.exists(file_path):
+             os.remove(file_path)
 
     except Exception as e:
-       logger.error(f"Error in handle_file_download: {e}")
-       logger.error(traceback.format_exc())  # Log traceback
-       bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}")
+        logger.error(traceback.format_exc())  # Log traceback
+        await client.send_message(chat_id=chat_id, text=f"An unexpected error has occurred: {e}")
 
 
-def handle_url_download(message):
-  """Handles incoming URL text messages."""
-  try:
+async def handle_url_download(client, message):
+    """Handles incoming URL text messages."""
+    try:
         chat_id = message.chat.id
         url = message.text
 
         if not url.startswith("http://") and not url.startswith("https://"):
-            bot.send_message(chat_id=chat_id, text="Invalid URL format. Please provide a valid http or https URL.")
+            await client.send_message(chat_id=chat_id, text="Invalid URL format. Please provide a valid http or https URL.")
             return
 
         file_name = os.path.basename(url)
         file_path = os.path.join(create_temp_dir(), file_name)
 
+        await client.send_message(chat_id=chat_id, text="Downloading file...")
 
-        download_strategies = [
-                (download_file_stream, (url, file_path)),
-                (asyncio.run, (download_file_stream_async(url, file_path),)),
-            ]
+        try:
+            async with  requests.get(url, stream=True) as response: # requests to download file from URL
+                response.raise_for_status()
+                with open(file_path, 'wb') as file:
+                   for chunk in response.iter_content(chunk_size=8192):
+                       file.write(chunk)
+            await send_telegram_file_chunks(client, file_path, chat_id)
 
-        for download_function, args in download_strategies:
-             try:
-                   if isinstance(download_function, type(asyncio.run)): # we call it differently if it's a asyncio method
-                      if download_function(*args):
-                         threading.Thread(target=process_file, args=(message, file_path)).start()
-                         return # if it works we return
+        except Exception as e:
+             logger.error(f"Error downloading and sending file using URL {e}")
+             logger.error(traceback.format_exc())  # Log traceback
+             await client.send_message(chat_id, "Download and send failed.")
 
-                   elif download_function(*args):
-                       threading.Thread(target=process_file, args=(message, file_path)).start()
-                       return  # if it works we return
-                   else:
-                      logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
-             except Exception as e:
-                  logger.error(f"Error using download strategy {download_function.__name__}: {e}")
-                  logger.error(traceback.format_exc()) # Log traceback
-                  bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
+        finally:
+             if file_path and os.path.exists(file_path):
+                 os.remove(file_path)
 
-        bot.send_message(chat_id=chat_id, text="All download attempts failed.")
+    except Exception as e:
+       logger.error(f"An unexpected error occurred: {e}")
+       logger.error(traceback.format_exc())  # Log traceback
+       await client.send_message(chat_id, f"An unexpected error has occurred: {e}")
 
-  except Exception as e:
-      logger.error(f"An unexpected error occurred in handle_url_download: {e}")
-      logger.error(traceback.format_exc())  # Log traceback
-      bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+async def start(client, message):
+  await client.send_message(chat_id=message.chat.id, text="Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
 
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    bot.send_message(message.chat.id, "Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
+async def main():
+  app = Client(
+      "file_transfer_bot",
+      api_id=int(os.environ.get("TELEGRAM_API_ID")), # you must have this enviroment variable set
+      api_hash=os.environ.get("TELEGRAM_API_HASH"), # you must have this enviroment variable set
+      bot_token=TELEGRAM_BOT_TOKEN
+  )
 
-@bot.message_handler(func=lambda message: message.text and not message.text.startswith('/'))
-def handle_text_messages(message):
-  """Handles incoming text message and creates a thread."""
-  handle_url_download(message)
+  @app.on_message(filters.command("start"))
+  async def start_command(client, message):
+    await start(client,message)
 
-@bot.message_handler(content_types=['document', 'video'])
-def handle_file_messages(message):
-   handle_file_download_from_telegram(message)
+  @app.on_message(filters.text & ~filters.command("start"))
+  async def handle_text_messages(client, message):
+    await handle_url_download(client, message)
 
-def main():
-    bot.delete_webhook()
-    print("Bot is running...")
-    bot.polling(none_stop=True)
 
-if __name__ == '__main__':
-    main()
+  @app.on_message(filters.document | filters.video)
+  async def handle_file_messages(client, message):
+        await handle_file_download(client, message)
+
+
+  print("Bot is running...")
+  await app.run()
+
+
+if __name__ == "__main__":
+   asyncio.run(main())
