@@ -32,7 +32,6 @@ async def download_file_stream(url, file_path):
         logger.error(f"Error downloading the file with stream: {e}")
         return False
 
-
 async def add_video_watermark(video_path, output_path, watermark_image, watermark_text):
     """Adds a watermark to a video using ffmpeg (image or text)."""
     try:
@@ -159,14 +158,14 @@ async def process_file(update: Update, context: ContextTypes.DEFAULT_TYPE, file_
         if file_to_send != file_path:
             os.remove(file_to_send)
 
-
     except Exception as e:
         logger.error(f"Error in processing file: {e}")
         await context.bot.send_message(chat_id=chat_id, text=f"An unexpected error has occurred: {e}")
 
-async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  """Handles incoming document and video messages."""
-  try:
+
+async def handle_file_download_from_telegram(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles incoming document and video messages from telegram."""
+    try:
         chat_id = update.effective_chat.id
         if update.message.document:
             logger.info(f"Received a document message: {update.message.document.file_name} and {update.message.document.file_id}")
@@ -180,7 +179,6 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
                 await context.bot.send_message(chat_id=chat_id, text="Download failed.")
                 return
 
-
             file_type = 'document'
             await process_file(update, context, file_path, file_type)
 
@@ -190,7 +188,9 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
             file_name = update.message.video.file_name
             file_path = os.path.join(create_temp_dir(), file_name)
 
+
             file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+
 
             if not await download_file_stream(file_url, file_path):
                  await context.bot.send_message(chat_id=chat_id, text="Download failed.")
@@ -199,25 +199,54 @@ async def handle_file_download(update: Update, context: ContextTypes.DEFAULT_TYP
             file_type = 'video'
             await process_file(update, context, file_path, file_type)
 
+    except TelegramError as e:
+          logger.error(f"Telegram API error in handle_file_download: {e}")
+          await context.bot.send_message(chat_id=chat_id, text=f"Error processing file. Please try again.")
 
-  except TelegramError as e:
-      logger.error(f"Telegram API error in handle_file_download: {e}")
-      await context.bot.send_message(chat_id=chat_id, text=f"Error processing file. Please try again.")
-
-  except Exception as e:
+    except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
         await context.bot.send_message(chat_id=chat_id, text=f"An unexpected error has occurred in handle_file_download: {e}")
 
 
 
+async def handle_url_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  """Handles incoming URL text messages."""
+  try:
+        chat_id = update.effective_chat.id
+        url = update.message.text
+
+        if not url.startswith("http://") and not url.startswith("https://"):
+            await context.bot.send_message(chat_id=chat_id, text="Invalid URL format. Please provide a valid http or https URL.")
+            return
+
+        file_name = os.path.basename(url)
+        file_path = os.path.join(create_temp_dir(), file_name)
+
+        if not await download_file_stream(url, file_path):
+            await context.bot.send_message(chat_id=chat_id, text="Download from URL failed.")
+            return
+
+        file_type = "other"
+        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            file_type = 'video'
+
+        await process_file(update, context, file_path, file_type)
+
+
+  except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"An unexpected error has occurred in handle_url_download: {e}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello, I am the watermark bot. Send me the file and I'll add the watermark!")
+  await context.bot.send_message(chat_id=update.effective_chat.id, text="Hello, I am the watermark bot. Send me a file or a file URL, and I'll add the watermark!")
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.ALL, handle_file_download))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url_download))
+    app.add_handler(MessageHandler(filters.ALL, handle_file_download_from_telegram))
 
     print("Bot is running...")
     app.run_polling()
