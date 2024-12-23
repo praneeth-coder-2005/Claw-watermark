@@ -63,7 +63,6 @@ async def send_telegram_file_chunks(client, file_path, chat_id):
         logger.error(f"Error sending telegram file: {e}")
         return False
 
-
 async def handle_file_download(client, message):
     """Handles incoming document and video messages from telegram."""
     try:
@@ -146,7 +145,6 @@ async def start(client, message):
 async def main():
   api_id = os.environ.get("TELEGRAM_API_ID")
   api_hash = os.environ.get("TELEGRAM_API_HASH")
-
 
   if not api_id or not api_hash:
       logger.error("TELEGRAM_API_ID and TELEGRAM_API_HASH environment variables must be set")
