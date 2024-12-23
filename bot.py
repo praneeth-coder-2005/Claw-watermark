@@ -5,7 +5,6 @@ import threading
 import requests
 from config import TELEGRAM_BOT_TOKEN, WATERMARK_IMAGE, WATERMARK_TEXT, TEMP_DIR
 
-
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 def create_temp_dir():
@@ -13,6 +12,7 @@ def create_temp_dir():
   if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
   return TEMP_DIR
+
 
 def download_file(url, file_path):
     """Downloads a file."""
@@ -83,7 +83,8 @@ def send_telegram_file(bot, file_path, chat_id):
       return False
 
 def process_video(message, url):
-    """Processes video file, including download, watermark, and sending."""
+  """Processes video file, including download, watermark, and sending."""
+  try:
     temp_dir = create_temp_dir()
     file_name = url.split("/")[-1]
     file_path = os.path.join(temp_dir, file_name)
@@ -91,8 +92,8 @@ def process_video(message, url):
 
     bot.send_message(message.chat.id, "Downloading file...")
     if not download_file(url, file_path):
-        bot.send_message(message.chat.id, "Download failed.")
-        return
+      bot.send_message(message.chat.id, "Download failed.")
+      return
 
     bot.send_message(message.chat.id, "Applying watermark...")
     if add_video_watermark(file_path, output_path, WATERMARK_IMAGE, WATERMARK_TEXT):
@@ -107,21 +108,36 @@ def process_video(message, url):
     else:
         bot.send_message(message.chat.id, "File sending failed.")
 
+
     # Clean up temporary files
     os.remove(file_path)
     if file_to_send != file_path:
         os.remove(file_to_send)
 
+  except Exception as e:
+    bot.send_message(message.chat.id, f"An unexpected error has occurred {e}")
+    print(f"Error in processing file: {e}")
+
+
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     bot.send_message(message.chat.id, "Hello, I am the watermark bot. Send me the file link and I'll add the watermark!")
 
-@bot.message_handler(func=lambda message: True)
+
+@bot.message_handler(content_types=['document'])
 def handle_file_download(message):
-    """Handles incoming messages, and creates thread for processing."""
-    if message and message.text:
-        url = message.text
-        threading.Thread(target=process_video, args=(message, url)).start()
+    """Handles incoming document messages."""
+    try:
+      print(f"Received a document message: {message.document.file_name} with ID: {message.document.file_id} and content type: {message.content_type}")
+      file_id = message.document.file_id
+      file_info = bot.get_file(file_id)
+      file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+      threading.Thread(target=process_video, args=(message, file_url)).start()
+
+    except Exception as e:
+      bot.send_message(message.chat.id, f"An unexpected error has occurred in handle_file_download {e}")
+      print(f"Error in processing document: {e}")
+
 
 def main():
     bot.delete_webhook()
