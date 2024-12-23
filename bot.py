@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-
 def create_temp_dir():
     """Creates the temporary directory for saving files, if not exist"""
     if not os.path.exists(TEMP_DIR):
@@ -50,7 +49,6 @@ async def download_file_stream_async(url, file_path):
     except Exception as e:
         print(f"Error downloading file: {e}")
         return False
-
 
 def send_telegram_file_chunks(bot, file_path, chat_id):
     """Sends a file to Telegram in chunks."""
@@ -116,59 +114,58 @@ def process_file(message, file_path):
         logger.error(f"Error in processing file: {e}")
         bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
 
-
 def handle_file_download_from_telegram(message):
-  """Handles incoming document and video messages from telegram."""
-  try:
+    """Handles incoming document and video messages from telegram."""
+    try:
         chat_id = message.chat.id
-        file_path = None # initialize file path
+        file_path = None  # Initialize file_path
         if message.document:
-            logger.info(f"Received a document message: {message.document.file_name} and {message.document.file_id}")
-            file_id = message.document.file_id
-            file_name = message.document.file_name
-            file_path = os.path.join(create_temp_dir(), file_name)
-            download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+           logger.info(f"Received a document message: {message.document.file_name} and {message.document.file_id}")
+           file_id = message.document.file_id
+           file_name = message.document.file_name
+           file_path = os.path.join(create_temp_dir(), file_name)
+           download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
         elif message.video:
-            logger.info(f"Received a video message: {message.video.file_name} and {message.video.file_id}")
-            file_id = message.video.file_id
-            file_name = message.video.file_name
-            file_path = os.path.join(create_temp_dir(), file_name)
-            download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+          logger.info(f"Received a video message: {message.video.file_name} and {message.video.file_id}")
+          file_id = message.video.file_id
+          file_name = message.video.file_name
+          file_path = os.path.join(create_temp_dir(), file_name)
+          download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
         if file_path:
-
-          download_strategies = [
+            download_strategies = [
                 (download_file_stream, (download_url, file_path)),
-                 (asyncio.run, (download_file_stream_async(download_url, file_path),)),
-            ]
-
-          for download_function, args in download_strategies:
-               try:
-                   if isinstance(download_function, type(asyncio.run)): # we call it differently if it's a asyncio method
+                  (asyncio.run, (download_file_stream_async(download_url, file_path),)),
+                ]
+            for download_function, args in download_strategies:
+                try:
+                    if isinstance(download_function, type(asyncio.run)): # we call it differently if it's a asyncio method
                       if download_function(*args):
                          threading.Thread(target=process_file, args=(message, file_path)).start()
                          return # if it works we return
 
-                   elif download_function(*args):
+                    elif download_function(*args):
                         threading.Thread(target=process_file, args=(message, file_path)).start()
                         return  # if it works we return
 
-                   else:
-                      logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
-               except Exception as e:
-                  logger.error(f"Error using download strategy {download_function.__name__}: {e}")
-                  logger.error(traceback.format_exc()) # Log traceback
-                  bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
+                    else:
+                       logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
 
-          bot.send_message(chat_id=chat_id, text="All download attempts failed.")
+                except Exception as e:
+                    logger.error(f"Error using download strategy {download_function.__name__}: {e}")
+                    logger.error(traceback.format_exc()) # Log traceback
+                    bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
 
+            bot.send_message(chat_id=chat_id, text="All download attempts failed.")
         else:
-           bot.send_message(chat_id=chat_id, text="Error getting file URL.")
-  except Exception as e:
-        logger.error(f"Error in handle_file_download: {e}")
-        logger.error(traceback.format_exc())  # Log traceback
-        bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+          bot.send_message(chat_id=chat_id, text="Error getting file URL.")
+
+    except Exception as e:
+       logger.error(f"Error in handle_file_download: {e}")
+       logger.error(traceback.format_exc())  # Log traceback
+       bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+
 
 def handle_url_download(message):
   """Handles incoming URL text messages."""
@@ -186,7 +183,7 @@ def handle_url_download(message):
 
         download_strategies = [
                 (download_file_stream, (url, file_path)),
-                 (asyncio.run, (download_file_stream_async(url, file_path),)),
+                (asyncio.run, (download_file_stream_async(url, file_path),)),
             ]
 
         for download_function, args in download_strategies:
@@ -210,9 +207,8 @@ def handle_url_download(message):
 
   except Exception as e:
       logger.error(f"An unexpected error occurred in handle_url_download: {e}")
-      logger.error(traceback.format_exc()) # Log traceback
+      logger.error(traceback.format_exc())  # Log traceback
       bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
-
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -231,7 +227,6 @@ def main():
     bot.delete_webhook()
     print("Bot is running...")
     bot.polling(none_stop=True)
-
 
 if __name__ == '__main__':
     main()
