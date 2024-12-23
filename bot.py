@@ -5,9 +5,9 @@ import threading
 import requests
 
 # --- CONFIGURATION ---
-TELEGRAM_BOT_TOKEN = "7550771021:AAEugqwyyW_yl0k5aBLl7PwUcLmySwZuFtM"  # Replace with your token
-WATERMARK_IMAGE = "watermark.png" # Replace if you are using image watermark
-WATERMARK_TEXT = "YourWatermark" # Replace with your watermark text
+TELEGRAM_BOT_TOKEN = "7974031259:AAG2hVunyhQZsLXS44TROPKbjmruuwBLxDY"  # Replace with your token
+WATERMARK_IMAGE = "https://envs.sh/JuG.jpg" # Replace if you are using image watermark
+WATERMARK_TEXT = "@ClawMoviez" # Replace with your watermark text
 TEMP_DIR = "temp_files"  # For temporary file storage
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -133,6 +133,7 @@ def handle_file_download(message):
 
 
 def main():
+    bot.delete_webhook()
     print("Bot is running...")
     bot.polling(non_stop=True)
 
