@@ -3,22 +3,16 @@ import telebot
 import subprocess
 import threading
 import requests
+from config import TELEGRAM_BOT_TOKEN, WATERMARK_IMAGE, WATERMARK_TEXT, TEMP_DIR
 
-# --- CONFIGURATION ---
-TELEGRAM_BOT_TOKEN = "7974031259:AAG2hVunyhQZsLXS44TROPKbjmruuwBLxDY"  # Replace with your token
-WATERMARK_IMAGE = "https://envs.sh/JuG.jpg" # Replace if you are using image watermark
-WATERMARK_TEXT = "@ClawMoviez" # Replace with your watermark text
-TEMP_DIR = "temp_files"  # For temporary file storage
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-
 
 def create_temp_dir():
   """Creates the temporary directory for saving files, if not exist"""
   if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
   return TEMP_DIR
-
 
 def download_file(url, file_path):
     """Downloads a file."""
@@ -88,37 +82,35 @@ def send_telegram_file(bot, file_path, chat_id):
       print(f"Error sending the telegram file: {e}")
       return False
 
-
 def process_video(message, url):
-  """Processes video file, including download, watermark, and sending."""
-  temp_dir = create_temp_dir()
-  file_name = url.split("/")[-1]
-  file_path = os.path.join(temp_dir, file_name)
-  output_path = os.path.join(temp_dir, "watermarked_" + file_name)
+    """Processes video file, including download, watermark, and sending."""
+    temp_dir = create_temp_dir()
+    file_name = url.split("/")[-1]
+    file_path = os.path.join(temp_dir, file_name)
+    output_path = os.path.join(temp_dir, "watermarked_" + file_name)
 
-  bot.send_message(message.chat.id, "Downloading file...")
-  if not download_file(url, file_path):
-      bot.send_message(message.chat.id, "Download failed.")
-      return
+    bot.send_message(message.chat.id, "Downloading file...")
+    if not download_file(url, file_path):
+        bot.send_message(message.chat.id, "Download failed.")
+        return
 
-  bot.send_message(message.chat.id, "Applying watermark...")
-  if add_video_watermark(file_path, output_path, WATERMARK_IMAGE, WATERMARK_TEXT):
-      file_to_send = output_path
-      bot.send_message(message.chat.id, "Watermark applied. Sending file.")
-  else:
-      file_to_send = file_path
-      bot.send_message(message.chat.id, "Watermark failed. Sending original file.")
+    bot.send_message(message.chat.id, "Applying watermark...")
+    if add_video_watermark(file_path, output_path, WATERMARK_IMAGE, WATERMARK_TEXT):
+        file_to_send = output_path
+        bot.send_message(message.chat.id, "Watermark applied. Sending file.")
+    else:
+        file_to_send = file_path
+        bot.send_message(message.chat.id, "Watermark failed. Sending original file.")
 
-  if send_telegram_file(bot, file_to_send, message.chat.id):
-    bot.send_message(message.chat.id, "File sent successfully!")
-  else:
-    bot.send_message(message.chat.id, "File sending failed.")
+    if send_telegram_file(bot, file_to_send, message.chat.id):
+        bot.send_message(message.chat.id, "File sent successfully!")
+    else:
+        bot.send_message(message.chat.id, "File sending failed.")
 
-
-  # Clean up temporary files
-  os.remove(file_path)
-  if file_to_send != file_path:
-    os.remove(file_to_send)
+    # Clean up temporary files
+    os.remove(file_path)
+    if file_to_send != file_path:
+        os.remove(file_to_send)
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -126,17 +118,15 @@ def handle_start(message):
 
 @bot.message_handler(func=lambda message: True)
 def handle_file_download(message):
-  """Handles incoming messages, and creates thread for processing."""
-  if message and message.text:
-    url = message.text
-    threading.Thread(target=process_video, args=(message, url)).start()
-
+    """Handles incoming messages, and creates thread for processing."""
+    if message and message.text:
+        url = message.text
+        threading.Thread(target=process_video, args=(message, url)).start()
 
 def main():
     bot.delete_webhook()
     print("Bot is running...")
     bot.polling(non_stop=True)
-
 
 if __name__ == "__main__":
     main()
