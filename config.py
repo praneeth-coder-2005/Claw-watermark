@@ -4,4 +4,4 @@ WATERMARK_IMAGE = "https://envs.sh/Rdy.jpg" # Replace if you are using image wat
 WATERMARK_TEXT = "@ClawMoviez" # Replace with your watermark text
 TEMP_DIR = "temp_files"  # For temporary file storage
 API_ID = 22250562
-API_HASH = 07754d3bdc27193318ae5f6e6c8016af
+API_HASH = "07754d3bdc27193318ae5f6e6c8016af"
