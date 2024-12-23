@@ -13,7 +13,6 @@ def create_temp_dir():
     os.makedirs(TEMP_DIR)
   return TEMP_DIR
 
-
 def download_file(url, file_path):
     """Downloads a file."""
     try:
@@ -82,18 +81,12 @@ def send_telegram_file(bot, file_path, chat_id):
       print(f"Error sending the telegram file: {e}")
       return False
 
-def process_video(message, url):
+def process_video(message, file_path):
   """Processes video file, including download, watermark, and sending."""
   try:
     temp_dir = create_temp_dir()
-    file_name = url.split("/")[-1]
-    file_path = os.path.join(temp_dir, file_name)
+    file_name = os.path.basename(file_path)
     output_path = os.path.join(temp_dir, "watermarked_" + file_name)
-
-    bot.send_message(message.chat.id, "Downloading file...")
-    if not download_file(url, file_path):
-      bot.send_message(message.chat.id, "Download failed.")
-      return
 
     bot.send_message(message.chat.id, "Applying watermark...")
     if add_video_watermark(file_path, output_path, WATERMARK_IMAGE, WATERMARK_TEXT):
@@ -112,27 +105,48 @@ def process_video(message, url):
     # Clean up temporary files
     os.remove(file_path)
     if file_to_send != file_path:
-        os.remove(file_to_send)
+      os.remove(file_to_send)
 
   except Exception as e:
-    bot.send_message(message.chat.id, f"An unexpected error has occurred {e}")
-    print(f"Error in processing file: {e}")
+      bot.send_message(message.chat.id, f"An unexpected error has occurred {e}")
+      print(f"Error in processing file: {e}")
 
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    bot.send_message(message.chat.id, "Hello, I am the watermark bot. Send me the file link and I'll add the watermark!")
+    bot.send_message(message.chat.id, "Hello, I am the watermark bot. Send me the file and I'll add the watermark!")
 
 
-@bot.message_handler(content_types=['document'])
+@bot.message_handler(content_types=['document', 'video'])
 def handle_file_download(message):
-    """Handles incoming document messages."""
+    """Handles incoming document and video messages."""
     try:
-      print(f"Received a document message: {message.document.file_name} with ID: {message.document.file_id} and content type: {message.content_type}")
-      file_id = message.document.file_id
-      file_info = bot.get_file(file_id)
-      file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
-      threading.Thread(target=process_video, args=(message, file_url)).start()
+      print(f"Received a message: {message.content_type}")
+
+      if message.document:
+        file_id = message.document.file_id
+        file_info = bot.get_file(file_id)
+        file_path = os.path.join(create_temp_dir(), message.document.file_name)
+
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        with open(file_path, "wb") as new_file:
+            new_file.write(downloaded_file)
+
+        threading.Thread(target=process_video, args=(message, file_path)).start()
+
+
+      elif message.video:
+        file_id = message.video.file_id
+        file_info = bot.get_file(file_id)
+        file_path = os.path.join(create_temp_dir(), message.video.file_name)
+
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        with open(file_path, "wb") as new_file:
+            new_file.write(downloaded_file)
+        threading.Thread(target=process_video, args=(message, file_path)).start()
+
 
     except Exception as e:
       bot.send_message(message.chat.id, f"An unexpected error has occurred in handle_file_download {e}")
