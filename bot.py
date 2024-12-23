@@ -3,6 +3,7 @@ import telebot
 import threading
 import requests
 import logging
+import traceback
 from config import TELEGRAM_BOT_TOKEN, TEMP_DIR
 
 logging.basicConfig(
@@ -17,6 +18,7 @@ def create_temp_dir():
     if not os.path.exists(TEMP_DIR):
         os.makedirs(TEMP_DIR)
     return TEMP_DIR
+
 
 def download_file_stream(url, file_path):
     """Downloads a file using stream processing."""
@@ -77,7 +79,6 @@ def send_telegram_file_chunks(bot, file_path, chat_id):
         logger.error(f"Error sending telegram file: {e}")
         return False
 
-
 def process_file(message, file_path):
     """Processes the file, including download, and sending."""
     try:
@@ -97,40 +98,54 @@ def process_file(message, file_path):
         logger.error(f"Error in processing file: {e}")
         bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
 
+
 def handle_file_download_from_telegram(message):
     """Handles incoming document and video messages from telegram."""
     try:
         chat_id = message.chat.id
+        file_path = None  # Initialize file_path
+
         if message.document:
-            logger.info(f"Received a document message: {message.document.file_name} and {message.document.file_id}")
-            file_id = message.document.file_id
-            file_name = message.document.file_name
-            file_path = os.path.join(create_temp_dir(), file_name)
-
-            file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
-
-            if not download_file_stream(file_url, file_path):
-              bot.send_message(chat_id=chat_id, text="Download failed.")
-              return
-            threading.Thread(target=process_file, args=(message, file_path)).start()
-
+           logger.info(f"Received a document message: {message.document.file_name} and {message.document.file_id}")
+           file_id = message.document.file_id
+           file_name = message.document.file_name
+           file_path = os.path.join(create_temp_dir(), file_name)
+           download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
         elif message.video:
           logger.info(f"Received a video message: {message.video.file_name} and {message.video.file_id}")
           file_id = message.video.file_id
           file_name = message.video.file_name
           file_path = os.path.join(create_temp_dir(), file_name)
+          download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
 
-          file_url =  f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_id}"
+        if file_path:
+            download_strategies = [
+                (download_file_stream, (download_url, file_path)),
+                ]
+            for download_function, args in download_strategies:
+                try:
+                    if download_function(*args):
+                       threading.Thread(target=process_file, args=(message, file_path)).start()
+                       return # if it works we return
+                    else:
+                       logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
 
-          if not download_file_stream(file_url, file_path):
-               bot.send_message(chat_id=chat_id, text="Download failed.")
-               return
-          threading.Thread(target=process_file, args=(message, file_path)).start()
+                except Exception as e:
+                    logger.error(f"Error using download strategy {download_function.__name__}: {e}")
+                    logger.error(traceback.format_exc()) # Log traceback
+                    bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
+
+
+            bot.send_message(chat_id=chat_id, text="All download attempts failed.")
+        else:
+          bot.send_message(chat_id=chat_id, text="Error getting file url.")
 
     except Exception as e:
-      logger.error(f"Error in handle_file_download: {e}")
-      bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+       logger.error(f"Error in handle_file_download: {e}")
+       logger.error(traceback.format_exc()) # Log traceback
+       bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+
 
 def handle_url_download(message):
   """Handles incoming URL text messages."""
@@ -145,28 +160,46 @@ def handle_url_download(message):
         file_name = os.path.basename(url)
         file_path = os.path.join(create_temp_dir(), file_name)
 
-        if not download_file_stream(url, file_path):
-            bot.send_message(chat_id=chat_id, text="Download from URL failed.")
-            return
+        download_strategies = [
+                (download_file_stream, (url, file_path)),
+                ]
 
-        threading.Thread(target=process_file, args=(message, file_path)).start()
+        for download_function, args in download_strategies:
+                try:
+                    if download_function(*args):
+                       threading.Thread(target=process_file, args=(message, file_path)).start()
+                       return # if it works we return
+                    else:
+                       logger.info(f"Download using strategy {download_function.__name__} failed, trying next")
+
+                except Exception as e:
+                    logger.error(f"Error using download strategy {download_function.__name__}: {e}")
+                    logger.error(traceback.format_exc()) # Log traceback
+                    bot.send_message(chat_id, f"Download strategy {download_function.__name__} failed, trying next.")
+
+        bot.send_message(chat_id=chat_id, text="All download attempts failed.")
 
   except Exception as e:
-        logger.error(f"An unexpected error occurred in handle_url_download: {e}")
-        bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+      logger.error(f"An unexpected error occurred in handle_url_download: {e}")
+      logger.error(traceback.format_exc())  # Log traceback
+      bot.send_message(chat_id, f"An unexpected error has occurred: {e}")
+
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     bot.send_message(message.chat.id, "Hello, I am a file transfer bot. Send me a file or a file URL, and I'll send it back!")
+
 
 @bot.message_handler(func=lambda message: message.text and not message.text.startswith('/'))
 def handle_text_messages(message):
   """Handles incoming text message and creates a thread."""
   handle_url_download(message)
 
+
 @bot.message_handler(content_types=['document', 'video'])
 def handle_file_messages(message):
    handle_file_download_from_telegram(message)
+
 
 def main():
     bot.delete_webhook()
