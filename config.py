@@ -1,11 +1,14 @@
 # config.py
 
-TELEGRAM_BOT_TOKEN = "7974031259:AAG2hVunyhQZsLXS44TROPKbjmruuwBLxDY"  # Replace with your bot token
-TEMP_DIR = "temp_files"  # For temporary file storage
+# Telegram Bot Token
+TOKEN = "7974031259:AAG2hVunyhQZsLXS44TROPKbjmruuwBLxDY"
 
-#  Api id, and Api hash obtained from my.telegram.org
-#  must set as integers and strings respectively
-#  not necessary to set as enviroment variables
+# Debug settings
+DEBUG = False
 
-TELEGRAM_API_ID = 22250562 # Replace with your api id
-TELEGRAM_API_HASH = "07754d3bdc27193318ae5f6e6c8016af"  # Replace with your api hash
+# Watermark settings
+DEFAULT_WATERMARK_TEXT = "@ClawMoviez"
+DEFAULT_WATERMARK_COLOR = (255, 255, 255, 128)  # White with 50% alpha
+DEFAULT_WATERMARK_FONT_SIZE = 30
+DEFAULT_OUTPUT_FILENAME = "watermarked_file"
+DEFAULT_DOWNLOAD_TIMEOUT = 3000 # In seconds
